@@ -1,0 +1,134 @@
+version: "3.9"
+
+services:
+
+  # ---------------- DATABASE POSTGRES ----------------
+  db:
+    image: postgres:15
+    container_name: pg_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  # ---------------- PGADMIN ----------------
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pg_admin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@test.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+
+
+  # ---------------- MONGO ----------------
+  mongo:
+    image: mongo:7
+    container_name: mongo_db
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpass
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+
+  # ---------------- MONGO UI ----------------
+  mongo-express:
+    image: mongo-express
+    container_name: mongo_ui
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: rootpass
+      ME_CONFIG_MONGODB_URL: mongodb://root:rootpass@mongo:27017
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+
+  # ---------------- FASTAPI BACKEND ----------------
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fastapi_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:password@db:5432/mydb
+    depends_on:
+      db:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./backend/key.pem:/app/key.pem
+      - ./backend/cert.pem:/app/cert.pem
+    command: >
+      uvicorn td:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --ssl-keyfile=/app/key.pem
+      --ssl-certfile=/app/cert.pem
+
+  # ---------------- CLI TOOL ----------------
+  cli:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cli_tool
+    restart: "no"
+    stdin_open: true
+    tty: true
+    depends_on:
+      - api
+    volumes:
+      - ./backend:/app
+    command: python shopcli.py
+
+
+  # ---------------- FRONTEND (NGINX STATIC) ----------------
+  frontend:
+    image: nginx:alpine
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+
+
+volumes:
+  pgdata:
+  mongo_data:

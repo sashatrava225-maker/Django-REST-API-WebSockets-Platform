@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Realtime Shop FULL</title>
+</head>
+<body>
+
+<h2>Realtime Shop</h2>
+
+<!-- REGISTER -->
+<h3>Register</h3>
+<input id="reg_user" placeholder="username">
+<input id="reg_pass" placeholder="password">
+<button onclick="register()">Register</button>
+
+<hr>
+
+<!-- LOGIN -->
+<h3>Login</h3>
+<input id="login_user" placeholder="username">
+<input id="login_pass" placeholder="password">
+<button onclick="login()">Login</button>
+
+<hr>
+
+<!-- ITEMS -->
+<h3>Add item</h3>
+<input id="item_name" placeholder="name">
+<input id="item_qty" type="number" placeholder="qty">
+<button onclick="addItem()">Add</button>
+
+<hr>
+
+<ul id="list"></ul>
+
+<script>
+
+let token = localStorage.getItem("token");
+let ws = null;
+
+// ---------------- REGISTER ----------------
+async function register() {
+
+    const username = document.getElementById("reg_user").value;
+    const password = document.getElementById("reg_pass").value;
+
+    const r = await fetch("https://localhost:8000/register", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username, password })
+    });
+
+    const data = await r.json();
+    console.log("REGISTER:", data);
+
+    alert("Registered");
+}
+
+// ---------------- LOGIN ----------------
+async function login() {
+
+    const username = document.getElementById("login_user").value;
+    const password = document.getElementById("login_pass").value;
+
+    const form = new URLSearchParams();
+    form.append("username", username);
+    form.append("password", password);
+
+    const r = await fetch("https://localhost:8000/login", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: form
+    });
+
+    const data = await r.json();
+
+    console.log("LOGIN RESPONSE:", data);
+
+    if (!r.ok) {
+        alert("Login failed");
+        return;
+    }
+
+    token = data.access_token;
+    localStorage.setItem("token", token);
+
+    connectWS();
+    loadItems();
+}
+
+// ---------------- WS ----------------
+function connectWS() {
+
+    if (!token) return;
+
+    ws = new WebSocket(`wss://localhost:8000/ws?token=${token}`);
+
+    ws.onopen = () => console.log("WS OPEN");
+
+    ws.onerror = (e) => console.log("WS ERROR", e);
+
+    ws.onclose = () => console.log("WS CLOSE");
+
+    ws.onmessage = (event) => {
+        console.log("WS MSG:", event.data);
+        loadItems();
+    };
+}
+
+// ---------------- LOAD ITEMS ----------------
+async function loadItems() {
+
+    const r = await fetch("https://localhost:8000/items", {
+        headers: {
+            Authorization: `Bearer ${token}`
+        }
+    });
+
+    const data = await r.json();
+
+    console.log("ITEMS:", data);
+
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+
+    if (!Array.isArray(data)) {
+        console.log("NOT ARRAY:", data);
+        return;
+    }
+
+    data.forEach(i => {
+        const li = document.createElement("li");
+        li.innerText = `${i.name} (${i.quantity})`;
+        list.appendChild(li);
+    });
+}
+
+// ---------------- ADD ITEM ----------------
+async function addItem() {
+
+    await fetch("https://localhost:8000/items", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            name: document.getElementById("item_name").value,
+            quantity: Number(document.getElementById("item_qty").value)
+        })
+    });
+
+    loadItems();
+}
+
+// auto init
+if (token) {
+    connectWS();
+    loadItems();
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Realtime Shop</title>
+</head>
+<body>
+
+<h1>🔥 Realtime Shop</h1>
+
+<input id="name" placeholder="name">
+<input id="qty" type="number" placeholder="qty">
+<button onclick="sendItem()">Send</button>
+
+<ul id="list"></ul>
+
+<script>
+const ws = new WebSocket("ws://localhost:8001/ws/items/");
+
+ws.onopen = () => console.log("CONNECTED");
+
+ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+
+    const li = document.createElement("li");
+    li.innerText = data.message || JSON.stringify(data);
+
+    document.getElementById("list").appendChild(li);
+};
+
+function sendItem() {
+    ws.send(JSON.stringify({
+        event: "text",
+        data: {
+            name: document.getElementById("name").value,
+            quantity: document.getElementById("qty").value
+        }
+    }));
+}
+</script>
+
+</body>
+</html>

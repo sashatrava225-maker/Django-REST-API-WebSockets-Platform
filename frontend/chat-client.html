@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat WebSocket Client</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 16px;
+      background: #f5f7fb;
+    }
+    .panel {
+      background: white;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    input, button {
+      font-size: 14px;
+      padding: 10px;
+      margin: 4px 0;
+    }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      cursor: pointer;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+    }
+    #messages {
+      height: 300px;
+      overflow-y: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+    .status {
+      font-weight: bold;
+      color: #0f766e;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h2>Chat WebSocket Demo</h2>
+    <label for="token">JWT token</label>
+    <input id="token" placeholder="Paste your token here" />
+    <button onclick="connectWebSocket()">Connect</button>
+    <div id="connectionStatus" class="status">Disconnected</div>
+  </div>
+
+  <div class="panel">
+    <label for="room">Room</label>
+    <input id="room" placeholder="room-name" />
+    <button onclick="joinRoom()">Join Room</button>
+    <button onclick="leaveRoom()">Leave Room</button>
+  </div>
+
+  <div class="panel">
+    <label for="message">Message</label>
+    <input id="message" placeholder="Type your message" />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <div class="panel">
+    <div id="messages"></div>
+  </div>
+
+  <script>
+    let ws = null;
+    let currentRoom = null;
+
+    const tokenInput = document.getElementById('token');
+    const roomInput = document.getElementById('room');
+    const messageInput = document.getElementById('message');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const messages = document.getElementById('messages');
+
+    function log(text, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const prefix = type === 'error' ? '[ERROR]' : '[INFO]';
+      messages.textContent += `${timestamp} ${prefix} ${text}\n`;
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function updateStatus(text) {
+      connectionStatus.textContent = text;
+    }
+
+    function connectWebSocket() {
+      const token = tokenInput.value.trim();
+      if (!token) {
+        alert('Please enter a token first.');
+        return;
+      }
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+
+      const wsUrl = `ws://localhost:8000/ws?token=${encodeURIComponent(token)}`;
+      log(`Connecting to ${wsUrl}`);
+      updateStatus('Connecting...');
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        log('WebSocket connected');
+        updateStatus('Connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'chat_message') {
+            log(`${data.user_id} in ${data.room}: ${data.message}`);
+          } else if (data.type === 'room_joined') {
+            currentRoom = data.room;
+            log(`Joined room: ${data.room}`);
+          } else if (data.type === 'room_left') {
+            log(`Left room: ${data.room}`);
+          } else if (data.type === 'error') {
+            log(data.message, 'error');
+          } else {
+            log(JSON.stringify(data));
+          }
+        } catch (e) {
+          log(`Invalid message: ${event.data}`, 'error');
+        }
+      };
+
+      ws.onerror = (event) => {
+        log('WebSocket error', 'error');
+        updateStatus('Error');
+      };
+
+      ws.onclose = () => {
+        log('WebSocket disconnected');
+        updateStatus('Disconnected');
+      };
+    }
+
+    function sendJson(payload) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Connect to the WebSocket first.');
+        return false;
+      }
+      ws.send(JSON.stringify(payload));
+      return true;
+    }
+
+    function joinRoom() {
+      const room = roomInput.value.trim();
+      if (!room) {
+        alert('Please enter a room name.');
+        return;
+      }
+      sendJson({ type: 'join_room', room });
+    }
+
+    function leaveRoom() {
+      const room = roomInput.value.trim();
+      if (!room) {
+        alert('Please enter a room name.');
+        return;
+      }
+      sendJson({ type: 'leave_room', room });
+    }
+
+    function sendMessage() {
+      const room = roomInput.value.trim();
+      const text = messageInput.value.trim();
+      if (!room || !text) {
+        alert('Room and message are required.');
+        return;
+      }
+      sendJson({ type: 'chat_message', room, message: text });
+      messageInput.value = '';
+    }
+  </script>
+</body>
+</html>

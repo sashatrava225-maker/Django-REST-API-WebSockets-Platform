@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>Realtime Shop</h2>
+
+<ul id="list"></ul>
+
+<script>
+const ws = new WebSocket("ws://127.0.0.1:8001/ws/items/");
+
+const list = document.getElementById("list");
+
+ws.onopen = () => {
+    console.log("CONNECTED");
+};
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log("MSG:", data);
+
+    if (data.event === "item_created") {
+        const li = document.createElement("li");
+        li.innerText = `${data.item.name} (${data.item.quantity})`;
+        list.appendChild(li);
+    }
+};
+</script>
+
+</body>
+</html>
